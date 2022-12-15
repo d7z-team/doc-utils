@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "doc_cli",
+    "doc_core"
+]
