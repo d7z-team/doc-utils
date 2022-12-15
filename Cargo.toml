@@ -1,5 +1,8 @@
 [workspace]
+
+default-members = ["doc-core"]
+
 members = [
-    "doc_cli",
-    "doc_core"
+    "doc-cli",
+    "doc-core"
 ]

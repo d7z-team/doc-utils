@@ -1,0 +1,8 @@
+[package]
+name = "doc-cli"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+doc-core = { path = "../doc-core" }
