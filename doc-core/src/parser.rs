@@ -1,19 +1,54 @@
-#[allow(dead_code)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ops::DerefMut;
+use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use linked_hash_map::LinkedHashMap;
+
+use crate::config::ValueWrapper;
+
+type ViewContent = Rc<RefCell<View>>;
+
 #[derive(Debug)]
-enum ValueWrapper {
-    Float(f64),
-    Number(i64),
-    Text(String),
-    Bool(bool),
+pub struct View {
+    pub name: Option<String>,
+    pub config: HashMap<String, ValueWrapper>,
+    pub parent: RefCell<Weak<View>>,
+    pub child: RefCell<LinkedHashMap<String, ViewContent>>,
 }
 
-impl ValueWrapper {
-    fn to_string(&self) -> String {
-        match &self {
-            ValueWrapper::Float(f) => f.to_string(),
-            ValueWrapper::Number(n) => n.to_string(),
-            ValueWrapper::Text(t) => t.to_string(),
-            ValueWrapper::Bool(b) => b.to_string(),
-        }
+static ID: AtomicU64 = AtomicU64::new(0);
+
+impl View {
+    fn new_id() -> String {
+        let i = ID.fetch_add(1, Ordering::Release);
+        format!("doc-id-{}", i)
     }
+    fn new() -> ViewContent {
+        Rc::new(RefCell::new(View {
+            name: None,
+            config: HashMap::new(),
+            parent: RefCell::default(),
+            child: RefCell::new(LinkedHashMap::new()),
+        }))
+    }
+    fn add_child(data: ViewContent, view: ViewContent) {
+        let ref_mut = data.borrow_mut();
+        let mut ref_mut1 = ref_mut.child.borrow_mut();
+        let x = ref_mut1.deref_mut();
+        x.insert(Self::new_id(), View::new());
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parser::View;
+
+    #[test]
+    fn test() {}
 }
