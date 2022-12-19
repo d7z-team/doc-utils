@@ -8,7 +8,7 @@ use std::ops::Not;
 use crate::error::{DocError, DocResult};
 use crate::error::ErrorType::Index;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ValueWrapper {
     Float(f64),
     Number(i64),
@@ -81,23 +81,29 @@ impl Config {
         };
         return Ok(());
     }
-    fn get(&self, key: String) -> Option<ValueWrapper> {
-       Self::get_internal(& self.root, Self::key_split(&key))
+    fn get(&self, key: String) -> Option<&ValueWrapper> {
+        Self::get_internal(&self.root, Self::key_split(&key))
     }
-    fn get_internal(node: & HashMap<String, ValueWrapper>, mut key: Vec<&str>) ->Option<ValueWrapper>{
+    fn get_internal<'a>(node: &'a HashMap<String, ValueWrapper>, mut key: Vec<&str>) -> Option<&'a ValueWrapper> {
         let current_key = if key.is_empty().not() {
             key.remove(0)
         } else {
             return None;
-
         }.to_string();
-        if key.is_empty(){
-            // 到达末尾
-            node.get(&current_key).map(|e|e.to)
-        }else {
-        todo!()
+        let next = node.get(&current_key);
+        if next.is_none() {
+            return None;
         }
-
+        if key.is_empty() {
+            // 到达末尾
+            next
+        } else {
+            if let ValueWrapper::Map(data) = next.unwrap() {
+                Self::get_internal(data, key)
+            } else {
+                return None;
+            }
+        }
     }
 }
 
@@ -110,6 +116,6 @@ mod test {
         let mut config = Config::new();
         config.push("key.id.name".to_string(), ValueWrapper::Bool(false)).unwrap();
         config.push("key.id.id".to_string(), ValueWrapper::Text("data".to_string())).unwrap();
-        println!("{:?}", config);
+        println!("{:?}", config.get("key.id".to_string()));
     }
 }
