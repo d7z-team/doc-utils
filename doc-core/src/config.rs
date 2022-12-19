@@ -45,8 +45,12 @@ impl Config {
             root: HashMap::new()
         }
     }
+    fn key_split(key: &str) -> Vec<&str> {
+        key.split(".").collect::<Vec<&str>>()
+    }
+
     fn push(&mut self, key: String, value: ValueWrapper) -> DocResult<()> {
-        Self::push_internal(&mut self.root, key.split(".").collect::<Vec<&str>>(), value)
+        Self::push_internal(&mut self.root, Self::key_split(&key), value)
     }
     fn push_internal(node: &mut HashMap<String, ValueWrapper>, mut key: Vec<&str>, value: ValueWrapper) -> DocResult<()> {
         let current_key = if key.is_empty().not() {
@@ -76,6 +80,24 @@ impl Config {
             }
         };
         return Ok(());
+    }
+    fn get(&self, key: String) -> Option<ValueWrapper> {
+       Self::get_internal(& self.root, Self::key_split(&key))
+    }
+    fn get_internal(node: & HashMap<String, ValueWrapper>, mut key: Vec<&str>) ->Option<ValueWrapper>{
+        let current_key = if key.is_empty().not() {
+            key.remove(0)
+        } else {
+            return None;
+
+        }.to_string();
+        if key.is_empty(){
+            // 到达末尾
+            node.get(&current_key).map(|e|e.to)
+        }else {
+        todo!()
+        }
+
     }
 }
 
