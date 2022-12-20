@@ -1,47 +1,36 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Not;
+use std::fmt::Debug;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use linked_hash_map::LinkedHashMap;
 
 use crate::config::ValueWrapper;
-use crate::error::DocResult;
+use crate::error::{DocResult, ErrorType};
 use crate::error::DocError::SoftError;
-use crate::error::ErrorType::{Format, Index};
-use crate::view::ViewPath::{ById, ByIndex};
+use crate::xpath::ViewPath;
 
-type TNodeView = Rc<RefCell<NodeView>>;
+pub(crate) type TNodeView = Rc<RefCell<NodeView>>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct NodeView {
-    type_id: String,
-    cfg: HashMap<String, ValueWrapper>,
-    parent: Weak<RefCell<NodeView>>,
-    child: LinkedHashMap<String, TNodeView>,
+    pub(crate) type_id: String,
+    pub(crate) cfg: HashMap<String, ValueWrapper>,
+    pub(crate) parent: Weak<RefCell<NodeView>>,
+    pub(crate) child: LinkedHashMap<String, TNodeView>,
 }
+
 
 static ID: AtomicU64 = AtomicU64::new(0);
 
 fn new_id() -> String {
     let i = ID.fetch_add(1, Ordering::Release);
     format!("doc-id-{}", i)
-}
-
-impl Default for NodeView {
-    fn default() -> Self {
-        NodeView {
-            type_id: "group".to_string(),
-
-            cfg: HashMap::new(),
-            parent: Weak::new(),
-            child: LinkedHashMap::new(),
-        }
-    }
 }
 
 
@@ -59,6 +48,10 @@ impl NodeView {
         };
         let mut current_mut = current.borrow_mut();
         let result = Rc::new(RefCell::new(child));
+        let mut id = id;
+        if id.trim().is_empty() {
+            id = new_id();
+        }
         current_mut.child.insert(id, Rc::clone(&result));
         result
     }
@@ -77,70 +70,51 @@ impl Document {
         }
     }
     fn add(&mut self, path: &str, type_id: String, id: String, conf: HashMap<String, ValueWrapper>, over: bool) -> DocResult<()> {
-        let result: Vec<ViewPath> = ViewPath::from_xpath(path)?;
-        let rc = Rc::clone(&self.root);
-        let weak = Rc::downgrade(&rc);
-        Ok(())
+        let mut path: Vec<ViewPath> = ViewPath::from_xpath(path)?;
+        Self::add_internal(&self.root, &mut path, type_id, id, conf, over)
     }
-    fn add_internal(current: &Rc<RefCell<NodeView>>,
+    fn add_internal(current: &TNodeView,
                     path: &mut Vec<ViewPath>,
                     type_id: String,
                     id: String,
                     conf: HashMap<String, ValueWrapper>,
                     over: bool) -> DocResult<()> {
         if path.is_empty() {
-            // point move  end , add view node
+            // 到达末尾，结束
             NodeView::add(current, type_id, id, conf);
             return Ok(());
         }
         let current_key = path.remove(0);
+        let ref_mut = current.borrow_mut();
+        let option = current_key.filter(&ref_mut.child).or_else(||
+            if over {
+                NodeView::add_group(current)
+            } else {
+                None
+            });
 
-        todo!()
+        if option.is_none() && over {
+            println!("无子队列{:?}", current_key);
+        }
+        let selected = option.ok_or(SoftError(ErrorType::NotMatch))?;
+        Self::add_internal(selected, path, type_id, id, conf, over)
     }
 }
 
 #[cfg(test)]
-mod view_path_test {
-    use crate::view::ViewPath;
+mod test_document {
+    use std::collections::HashMap;
+    use std::rc::Weak;
+
+    use crate::view::Document;
 
     #[test]
     fn test() {
-        println!("{:?}", ViewPath::from_xpath("/param[12]/[123]/"))
-    }
-}
-
-#[derive(Debug)]
-enum ViewPath {
-    ByIndex(String, usize),
-    ById(String, String),
-}
-
-impl ViewPath {
-    fn new(item: &str) -> DocResult<ViewPath> {
-        let types = if item.ends_with(")") {
-            "("
-        } else if item.ends_with("]") {
-            "["
-        } else {
-            return Err(SoftError(Index("".to_string())));
-        };
-        let x = item.splitn(2, types).collect::<Vec<&str>>();
-        if x.len() != 2 {
-            return Err(SoftError(Index("".to_string())));
-        }
-        let value = x[1][0..x[1].len() - 1].to_string();
-        if types == "(" {
-            Ok(ById(x[0].to_string(), value))
-        } else {
-            Ok(ByIndex(x[0].to_string(), value.parse::<usize>()
-                .map_err(|e| SoftError(Format(e.to_string())))?))
-        }
-    }
-    fn from_xpath(xpath: &str) -> DocResult<Vec<ViewPath>> {
-        let mut result = vec![];
-        for item in xpath.split("/").filter(|e| e.trim().is_empty().not()).collect::<Vec<&str>>() {
-            result.push(ViewPath::new(item)?)
-        }
-        Ok(result)
+        let mut document = Document::new();
+        document.add("/group[0]", "group".to_string(), "".to_string(), HashMap::new(), false).unwrap();
+        let x = document.root.borrow();
+        let weak = &x.child.values().next().unwrap().borrow().parent;
+        println!("{:?}", Weak::upgrade(weak).unwrap().borrow().type_id);
+        println!("{:#?}", document);
     }
 }
