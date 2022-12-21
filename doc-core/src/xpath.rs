@@ -1,80 +1,87 @@
+#![allow(dead_code)]
+
+use std::num::ParseIntError;
 use std::ops::Not;
 
-use linked_hash_map::LinkedHashMap;
-
-use crate::error::DocError::SoftError;
-use crate::error::DocResult;
-use crate::error::ErrorType::{Format, Index};
-use crate::view::TNodeView;
-use crate::xpath::ViewPath::{ById, ByIndex, ByTypedId, ByTypedIndex};
+use crate::error::{DocError, DocResult};
+use crate::error::ErrorType::Format;
+use crate::xpath::PathSelectType::{Id, Index, Tag, Type, TypeId, TypeIndex, TypeTag};
 
 #[cfg(test)]
 mod view_path_test {
-    use crate::xpath::ViewPath;
+    use crate::xpath::PathSelectType;
+    use crate::xpath::PathSelectType::{Id, Index, Tag, Type, TypeId, TypeIndex, TypeTag};
 
     #[test]
     fn test() {
-        println!("{:?}", ViewPath::from_xpath("/param[12]/[123]/"))
+        assert_eq!(PathSelectType::from("title#h1").unwrap(), TypeId("title".to_string(), "h1".to_string()));
+        assert_eq!(PathSelectType::from("title.h1").unwrap(), TypeTag("title".to_string(), "h1".to_string()));
+        assert_eq!(PathSelectType::from("title:1").unwrap(), TypeIndex("title".to_string(), 1));
+        assert_eq!(PathSelectType::from("#h1").unwrap(), Id("h1".to_string()));
+        assert_eq!(PathSelectType::from(".h1").unwrap(), Tag("h1".to_string()));
+        assert_eq!(PathSelectType::from(":1").unwrap(), Index(1));
+        assert_eq!(PathSelectType::from("title").unwrap(), Type("title".to_string()));
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum ViewPath {
-    ByIndex(usize),
-    ByTypedIndex(String, usize),
-    ById(String),
-    ByTypedId(String, String),
+///
+/// - type#id
+/// - type.tag
+/// - type:index
+/// - #id
+/// - .tag
+/// - :index
+/// - type
+///
+///
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum PathSelectType {
+    Type(String),
+    Id(String),
+    Tag(String),
+    Index(usize),
+    TypeId(String, String),
+    TypeIndex(String, usize),
+    TypeTag(String, String),
 }
 
-impl ViewPath {
-    pub(crate) fn filter<'a>(&self, child: &'a LinkedHashMap<String, TNodeView>) -> Option<&'a TNodeView> {
-        match self {
-            ByIndex(index) => if child.len() < *index {
-                child.values().skip(*index).next()
+pub type DocumentPath = Vec<PathSelectType>;
+
+impl PathSelectType {
+    fn from(str: &str) -> DocResult<Self> {
+        if str.matches(|current: char| current == '#' || current == ':' || current == '.' || current == ' ').count() > 1 {
+            return Err(DocError::SoftError(Format(format!("'{}' 存在多个匹配字符或存在空格", str.to_string()))));
+        }
+        if str.contains("#") {
+            if str.starts_with("#") {
+                Ok(Id(str[1..].to_string()))
             } else {
-                None
-            },
-            ByTypedIndex(type_id, index) => {
-                child.values().filter(|e| e.borrow().type_id == *type_id).skip(*index).next()
+                let pair = str.splitn(2, "#").collect::<Vec<&str>>();
+                Ok(TypeId(pair[0].to_string(), pair[1].to_string()))
             }
-            ById(type_id) => child.values().filter(|e| e.borrow().type_id == *type_id).next(),
-            ByTypedId(type_id, id) => child.get(id).filter(|e| e.borrow().type_id == *type_id)
-        }
-    }
-    fn new(item: &str) -> DocResult<ViewPath> {
-        let types = if item.ends_with(")") {
-            "("
-        } else if item.ends_with("]") {
-            "["
-        } else {
-            return Err(SoftError(Index("".to_string())));
-        };
-        let x = item.splitn(2, types).collect::<Vec<&str>>();
-        if x.len() != 2 {
-            return Err(SoftError(Index("".to_string())));
-        }
-        let value = x[1][0..x[1].len() - 1].to_string();
-        if types == "(" {
-            if x[0].is_empty() {
-                Ok(ById(value))
+        } else if str.contains(":") {
+            if str.starts_with(":") {
+                Ok(Index(str[1..].to_string().parse().map_err(|e: ParseIntError| {
+                    DocError::SoftError(Format(e.to_string()))
+                })?))
             } else {
-                Ok(ByTypedId(x[0].to_string(), value))
+                let pair = str.splitn(2, ":").collect::<Vec<&str>>();
+                Ok(TypeIndex(pair[0].to_string(), pair[1].to_string().parse().map_err(|e: ParseIntError| {
+                    DocError::SoftError(Format(e.to_string()))
+                })?))
+            }
+        } else if str.contains(".") {
+            if str.starts_with(".") {
+                Ok(Tag(str[1..].to_string()))
+            } else {
+                let pair = str.splitn(2, ".").collect::<Vec<&str>>();
+                Ok(TypeTag(pair[0].to_string(), pair[1].to_string()))
             }
         } else {
-            if x[0].is_empty() {
-                Ok(ByIndex(value.parse::<usize>()
-                    .map_err(|e| SoftError(Format(e.to_string())))?))
-            } else {
-                Ok(ByTypedIndex(x[0].to_string(), value.parse::<usize>()
-                    .map_err(|e| SoftError(Format(e.to_string())))?))
-            }
+            Ok(Type(str.to_string()))
         }
     }
-    pub(crate) fn from_xpath(xpath: &str) -> DocResult<Vec<ViewPath>> {
-        let mut result = vec![];
-        for item in xpath.split("/").filter(|e| e.trim().is_empty().not()).collect::<Vec<&str>>() {
-            result.push(ViewPath::new(item)?)
-        }
-        Ok(result)
+    pub fn from_path(path: &str) -> DocResult<Vec<Self>> {
+        path.split("/").map(|e| e.trim()).filter(|e| e.is_empty().not()).map(|e| Self::from(e)).collect()
     }
 }
