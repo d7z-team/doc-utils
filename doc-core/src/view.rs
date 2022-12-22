@@ -50,18 +50,25 @@ impl NodeView {
     fn is_root(&self) -> bool {
         self.parent.upgrade().is_none()
     }
-    fn get_child(&self, path: &PathSelectType) -> Vec<&Rc<NodeViewRef>> {
-        match path {
+    fn get_child(&self, path: &PathSelectType) -> Vec<Rc<NodeViewRef>> {
+        let vec1 = match path {
             PathSelectType::Id(id) => self.child.get(id).map(|e| vec![e]).unwrap_or(vec![]),
-            PathSelectType::Type(type_id) => self.child.values().filter(|e| e.borrow().type_id == *type_id).collect(),
-            PathSelectType::Tag(tag) => self.child.values().filter(|e| e.borrow().tags.contains(tag)).collect(),
-            PathSelectType::Index(index) => self.child.iter().skip(*index).next().map(|e| vec![e.1]).unwrap_or(vec![]),
-            PathSelectType::TypeId(type_id, id) => self.child.get(id).filter(|e| e.borrow().type_id == *type_id)
-                .map(|e| vec![e]).unwrap_or(vec![]),
-            PathSelectType::TypeIndex(type_id, index) => self.child.values().filter(|e| e.borrow().type_id == *type_id).skip(*index).collect(),
-            PathSelectType::TypeTag(type_id, tag) => self.child.values().filter(|e| e.borrow().type_id == *type_id)
-                .filter(|e| e.borrow().tags.contains(tag)).collect(),
-        }
+            PathSelectType::Type(type_id) =>
+                self.child.values().filter(|e| e.borrow().type_id == *type_id).collect(),
+            PathSelectType::Tag(tag) =>
+                self.child.values().filter(|e| e.borrow().tags.contains(tag)).collect(),
+            PathSelectType::Index(index) =>
+                self.child.iter().skip(*index).next().map(|e| vec![e.1]).unwrap_or(vec![]),
+            PathSelectType::TypeId(type_id, id) =>
+                self.child.get(id).filter(|e| e.borrow().type_id == *type_id)
+                    .map(|e| vec![e]).unwrap_or(vec![]),
+            PathSelectType::TypeIndex(type_id, index) =>
+                self.child.values().filter(|e| e.borrow().type_id == *type_id).skip(*index).collect(),
+            PathSelectType::TypeTag(type_id, tag) =>
+                self.child.values().filter(|e| e.borrow().type_id == *type_id)
+                    .filter(|e| e.borrow().tags.contains(tag)).collect(),
+        };
+        vec1.iter().map(|e| Rc::clone(e)).collect()
     }
     fn add_child(current: &NodeViewRef, view: PushView) {
         let child = Rc::new(RefCell::new(NodeView {
@@ -90,21 +97,20 @@ impl Document {
             root: Rc::new(RefCell::new(NodeView::default()))
         }
     }
-    fn exists(&self, path: DocumentPath) -> bool {
-        let mut child = Clone::clone(&path);
+    fn exists(&self, path: &DocumentPath) -> bool {
+        let mut child = Clone::clone(path);
         Self::exists_ref(&self.root, &mut child)
     }
-    fn exists_ref(refs: &Rc<NodeViewRef>, path: &mut DocumentPath) -> bool {
-        if path.is_empty() {
-            return false;
-        }
+    fn exists_ref(refs: &Rc<NodeViewRef>, path: &mut DocumentPath ) -> bool {
         let select_type = path.remove(0);
         let current = refs.borrow();
         let child = current.get_child(&select_type);
         if child.is_empty() {
-            return false;
+            return false
+        } else if path.is_empty(){
+            return true
         } else {
-            Self::exists_ref(child[0], path)
+            Self::exists_ref(&child[0], path)
         }
     }
     fn mk_group(&self, path: DocumentPath) -> bool {
@@ -115,10 +121,11 @@ impl Document {
         if path.is_empty() {
             return false;
         }
-        let rc1 = Rc::clone(refs);
         let select_type = path.remove(0);
-        let current = rc1.borrow();
-        let child = current.get_child(&select_type);
+        let child = {
+            let current = refs.borrow();
+            current.get_child(&select_type)
+        };
         if child.is_empty() {
             let id = if let PathSelectType::Id(id) = select_type {
                 Some(id.to_string())
@@ -133,7 +140,7 @@ impl Document {
             });
             false
         } else {
-            Self::mk_group_ref(child[0], path)
+            Self::mk_group_ref(&child[0], path)
         }
     }
     fn create(&self, path: DocumentPath, view: PushView) -> DocResult<()> {
@@ -143,17 +150,15 @@ impl Document {
 
 #[cfg(test)]
 mod test_document {
-    use std::rc::Rc;
-
-    use crate::view::Document;
-    use crate::xpath::PathSelectType;
+    use crate::view::{Document};
+    use crate::xpath::{PathSelectType};
 
     #[test]
     fn test() {
         let document = Document::new();
-        let result = PathSelectType::from_path("/item/data").unwrap();
-        println!("{}", document.exists(Clone::clone(&result)));
-        document.mk_group(result);
-        println!("{:?}", document);
+        let path = PathSelectType::from_path("/group/group").unwrap();
+        document.mk_group(Clone::clone(&path));
+        println!("{}", document.exists(&path));
+        println!("{:#?}", document);
     }
 }
