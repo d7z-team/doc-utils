@@ -1,12 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::ops::Not;
 
-use crate::error::{DocError, DocResult};
-use crate::error::ErrorType::Index;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum ValueWrapper {

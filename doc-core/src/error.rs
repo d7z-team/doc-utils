@@ -2,6 +2,8 @@ use std::convert::Infallible;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::ErrorKind::Other;
 
+use crate::error::ErrorType::Format;
+
 pub type DocResult<T> = Result<T, DocError>;
 
 pub enum DocError {
@@ -12,9 +14,13 @@ pub enum DocError {
 
 #[derive(Debug)]
 pub enum ErrorType {
-    NotMatch,
     Format(String),
-    Index(String),
+}
+
+impl ErrorType {
+    pub fn format_error<T>(msg: String) -> DocResult<T> {
+        Err(DocError::SoftError(Format(msg)))
+    }
 }
 
 impl Display for DocError {

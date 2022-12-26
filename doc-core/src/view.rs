@@ -11,7 +11,7 @@ use std::rc::{Rc, Weak};
 use linked_hash_map::LinkedHashMap;
 
 use crate::config::Config;
-use crate::error::DocResult;
+use crate::error::{DocResult, ErrorType};
 use crate::utils::new_id;
 use crate::xpath::{DocumentPath, PathSelectType};
 
@@ -34,6 +34,7 @@ pub struct NodeView {
     pub child: LinkedHashMap<String, Rc<NodeViewRef>>,
 }
 
+
 impl Default for NodeView {
     fn default() -> Self {
         NodeView {
@@ -45,6 +46,7 @@ impl Default for NodeView {
         }
     }
 }
+
 
 impl NodeView {
     fn is_root(&self) -> bool {
@@ -70,7 +72,16 @@ impl NodeView {
                     .filter(|e| e.borrow().tags.contains(tag)).collect(),
         }.iter().map(|e| Rc::clone(e)).collect()
     }
-    fn add_child(current: &NodeViewRef, view: PushView) {
+    fn add_child(current: &NodeViewRef, view: PushView) -> DocResult<()> {
+        let id = if let Some(id) = view.id {
+            if id.is_empty() || id.contains(" ") {
+                return ErrorType::format_error("ID不能包含空格和特殊字符".to_owned());
+            } else {
+                id
+            }
+        } else {
+            new_id()
+        };
         let child = Rc::new(RefCell::new(NodeView {
             type_id: view.type_id,
             tags: view.tags,
@@ -78,7 +89,8 @@ impl NodeView {
             parent: Weak::new(),
             child: Default::default(),
         }));
-        current.borrow_mut().child.insert(view.id.unwrap_or(new_id()), child);
+        current.borrow_mut().child.insert(id, child);
+        Ok(())
     }
     fn has_child(&self, path: &PathSelectType) -> bool {
         self.get_child(path).is_empty().not()
@@ -97,7 +109,7 @@ impl Document {
             root: Rc::new(RefCell::new(NodeView::default()))
         }
     }
-    fn exists(&self, path: &DocumentPath) -> bool {
+    pub fn exists(&self, path: &DocumentPath) -> bool {
         Self::exists_ref(&self.root, path, 0)
     }
     fn exists_ref(refs: &Rc<NodeViewRef>, path: &DocumentPath, index: usize) -> bool {
@@ -116,13 +128,13 @@ impl Document {
     }
 
 
-    fn mk_group(&self, path: &DocumentPath) -> bool {
-        Self::mk_group_ref(&self.root, &path, 0)
+    pub fn mk_group(&self, path: &DocumentPath) -> bool {
+        Self::mk_group_ref(&self.root, &path, 0).unwrap()
     }
-    fn mk_group_ref(refs: &Rc<NodeViewRef>, path: &DocumentPath, index: usize) -> bool {
+    fn mk_group_ref(refs: &Rc<NodeViewRef>, path: &DocumentPath, index: usize) -> DocResult<bool> {
         let current = path.get(index);
         if current.is_none() {
-            return false;
+            return Ok(false);
         }
         let current = current.unwrap();
         let child = {
@@ -140,10 +152,10 @@ impl Document {
                 id,
                 tags: vec![],
                 config: Default::default(),
-            });
-            false
+            })?;
+            Ok(false)
         } else {
-            Self::mk_group_ref(&child[0], path,index+1)
+            Self::mk_group_ref(&child[0], path, index + 1)
         }
     }
     fn create(&self, path: DocumentPath, view: PushView) -> DocResult<()> {
@@ -153,8 +165,8 @@ impl Document {
 
 #[cfg(test)]
 mod test_document {
-    use crate::view::{Document};
-    use crate::xpath::{PathSelectType};
+    use crate::view::Document;
+    use crate::xpath::PathSelectType;
 
     #[test]
     fn test() {
@@ -162,6 +174,6 @@ mod test_document {
         let path = PathSelectType::from_path("/group/group").unwrap();
         document.mk_group(&path);
         println!("{}", document.exists(&path));
-        println!("{:#?}", document);
+        println!("{:#?}", document.root.borrow());
     }
 }

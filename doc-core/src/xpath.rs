@@ -3,7 +3,7 @@
 use std::num::ParseIntError;
 use std::ops::Not;
 
-use crate::error::{DocError, DocResult};
+use crate::error::{DocError, DocResult, ErrorType};
 use crate::error::ErrorType::Format;
 use crate::xpath::PathSelectType::{Id, Index, Tag, Type, TypeId, TypeIndex, TypeTag};
 
@@ -50,7 +50,7 @@ pub type DocumentPath = Vec<PathSelectType>;
 impl PathSelectType {
     fn from(str: &str) -> DocResult<Self> {
         if str.matches(|current: char| current == '#' || current == ':' || current == '.' || current == ' ').count() > 1 {
-            return Err(DocError::SoftError(Format(format!("'{}' 存在多个匹配字符或存在空格", str.to_string()))));
+            return ErrorType::format_error(format!("'{}' 存在多个匹配字符或存在空格", str));
         }
         if str.contains("#") {
             if str.starts_with("#") {

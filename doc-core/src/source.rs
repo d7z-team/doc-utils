@@ -1,9 +1,15 @@
-#[derive(Debug)]
+use std::fmt::{Display, Formatter};
+
 pub struct Source {
     lines: Vec<Vec<char>>,
     length: usize,
 }
 
+impl Display for Source {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.to_string())
+    }
+}
 
 impl Source {
     pub fn new(data: &str) -> Self {
