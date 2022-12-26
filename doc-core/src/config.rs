@@ -15,3 +15,10 @@ pub enum ValueWrapper {
 }
 
 pub type Config = HashMap<String, ValueWrapper>;
+
+impl ValueWrapper {
+    fn from(src: &str) -> Config {
+        // src.split("")
+        todo!()
+    }
+}
