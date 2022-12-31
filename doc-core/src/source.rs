@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
 use std::fmt::{Debug, Display, Formatter};
+use std::iter::Map;
+use crate::config::{Config, ValueWrapper};
+use crate::error::DocResult;
 
 pub struct Source {
     pub lines: Vec<Vec<char>>,
@@ -25,6 +28,12 @@ impl Display for Source {
     }
 }
 
+
+struct IncludeInfo {
+    path: String,
+    options: Config,
+}
+
 impl Source {
     pub fn from(data: &str) -> Self {
         Self::from_line_hook(data, |e| e.to_string())
@@ -39,12 +48,8 @@ impl Source {
     }
     pub fn from_prebuild_include(src: &str, path_hook: fn(&str) -> Option<String>) -> Self {
         let data = |line: &str| -> String {
-            let option_start_index = line.find("[");
-            if line.starts_with("include::") && line.ends_with("]") && option_start_index.is_some() {
-                let option_start_index = option_start_index.unwrap();
-                let path = line[9..option_start_index].to_string();
-                let options = line[option_start_index..line.len() - 1].to_string();
-                path_hook(&path).unwrap_or(format!(" {}", line))
+            if let Ok(Some(include)) = Self::parse_include(line) {
+                path_hook(&include.path).unwrap_or(format!(" {}", line))
             } else {
                 line.to_string()
             }
@@ -56,7 +61,24 @@ impl Source {
             length,
         }
     }
+
+
+    fn parse_include(line: &str) -> DocResult<Option<IncludeInfo>> {
+        let option_start_index = line.find("[");
+        if line.starts_with("include::") && line.ends_with("]") && option_start_index.is_some() {
+            let option_start_index = option_start_index.unwrap();
+            let path = line[9..option_start_index].to_string();
+            let options = &line[option_start_index..line.len() - 1];
+            Ok(Some(IncludeInfo {
+                path,
+                options: ValueWrapper::from(options)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }
+
 
 #[cfg(test)]
 mod test {
